@@ -1,100 +1,231 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-import os
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-# ==========================================
-# 1. PARAMETER FISIK (ALUMINIUM - JURNAL DEFRIANTO)
-# ==========================================
-L = 0.02              # Tebal/Tinggi pelat adaptor (2 cm = 0.02 m)
-alpha = 9.7e-5        # Difusivitas termal Aluminium (m^2/s)
-T_hot = 463.0         # Kondisi Batas Dirichlet Bawah (x=0) -> Sumber Panas
-T_cold = 373.0        # Kondisi Batas Dirichlet Atas (x=L) -> Sisi Elemen TEG
-T_init = 298.0        # Kondisi Awal (t=0) -> Suhu Ruang 
+<title>Simulasi Panas TEG Dirichlet</title>
 
-# ==========================================
-# 2. PARAMETER GRID DISKRIT & WAKTU
-# ==========================================
-nx = 60               # Jumlah titik pias sepanjang sumbu vertikal
-dx = L / (nx - 1)     # Jarak antar titik grid
-dt = 0.0004           # Langkah waktu (detik) - dibuat kecil agar stabil
-t_total = 2.5         # Total waktu simulasi sampai kondisi tunak (steady)
-nt = int(t_total / dt)
+<style>
+    body{
+        font-family: Arial, sans-serif;
+        background:#f4f4f4;
+        text-align:center;
+        margin:0;
+        padding:20px;
+    }
 
-# Cek Syarat Kestabilan Courant (CFL harus < 0.5)
-cfl = alpha * dt / (dx**2)
-print(f"Nilai parameter kestabilan CFL: {cfl:.4f}")
-if cfl >= 0.5:
-    raise ValueError("Simulasi tidak stabil! Perkecil nilai dt.")
+    h1{
+        margin-bottom:5px;
+    }
 
-# Inisialisasi Posisi Vertikal (Sumbu Y pada Grafik)
-x = np.linspace(0, L, nx)
+    canvas{
+        background:white;
+        border:1px solid #ccc;
+        margin-top:20px;
+    }
 
-# Inisialisasi array Suhu T
-T = np.ones(nx) * T_init
+    .info{
+        margin-top:10px;
+        font-size:18px;
+    }
+</style>
+</head>
 
-# Terapkan Syarat Batas Dirichlet di Awal
-T[0] = T_hot
-T[-1] = T_cold
+<body>
 
-# Array penampung frame untuk kebutuhan animasi bergerak
-history_T = [T.copy()]
-waktu_simulasi = [0.0]
+<h1>Simulasi Transien Perambatan Panas Vertikal 1D</h1>
+<p>Kondisi Batas Dirichlet - Kasus TEG</p>
 
-# ==========================================
-# 3. PROSES ITERASI NUMERIK (PERSAMAAN DIFUSI PANAS)
-# ==========================================
-for n in range(nt):
-    T_new = T.copy()
-    
-    # Hitung nilai suhu di titik bagian dalam pelat (Internal Nodes)
-    for i in range(1, nx - 1):
-        T_new[i] = T[i] + cfl * (T[i+1] - 2*T[i] + T[i-1])
-        
-    # Jaga Kondisi Batas Dirichlet agar TETAP KONSTAN di Ujung-Ujungnya
-    T_new[0] = T_hot
-    T_new[-1] = T_cold
-    
-    T = T_new.copy()
-    
-    # Simpan frame setiap 25 iterasi agar jalannya animasi halus
-    if n % 25 == 0:
-        history_T.append(T.copy())
-        waktu_simulasi.append(n * dt)
+<canvas id="canvas" width="700" height="700"></canvas>
 
-# ==========================================
-# 4. RENDERING GRAFIK BERGERAK VERTIKAL (VS CODE)
-# ==========================================
-# Membuat plot vertikal: Sumbu X = Suhu (K), Sumbu Y = Posisi Vertikal Pelat (m)
-fig, ax = plt.subplots(figsize=(6, 8))
-line, = ax.plot(history_T[0], x, color='red', lw=3, label='Profil Suhu $T(x,t)$')
+<div class="info" id="timeText">
+    Waktu: 0.000 detik
+</div>
 
-# Batas tampilan grafik luar
-ax.set_xlim(250, 500)
-ax.set_ylim(0, L)
-ax.set_xlabel('Suhu / Temperatur (Kelvin)', fontsize=12)
-ax.set_ylabel('Posisi Vertikal Pelat Adaptor, $x$ (meter)', fontsize=12)
-ax.set_title('Simulasi Transien Perambatan Panas Vertikal 1D\n(Kondisi Batas Dirichlet - Kasus TEG)', fontsize=12, pad=15)
-ax.grid(True, linestyle='--', alpha=0.6)
+<script>
 
-# Teks keterangan waktu transien
-time_text = ax.text(260, L * 0.9, '', fontsize=12, bbox=dict(facecolor='white', alpha=0.8))
-ax.legend(loc='lower left')
+// ==========================================
+// 1. PARAMETER FISIK
+// ==========================================
+const L = 0.02;
+const alpha = 9.7e-5;
 
-# Fungsi pengupdate tiap frame gambar bergerak
-def update(i):
-    line.set_xdata(history_T[i])
-    time_text.set_text(f'Waktu: {waktu_simulasi[i]:.3f} detik')
-    return line, time_text
+const T_hot = 463.0;
+const T_cold = 373.0;
+const T_init = 298.0;
 
-# Menjalankan objek animasi
-ani = FuncAnimation(fig, update, frames=len(history_T), interval=40, blit=True)
+// ==========================================
+// 2. GRID DAN WAKTU
+// ==========================================
+const nx = 60;
+const dx = L / (nx - 1);
 
-# Menyimpan ke direktori lokal laptop sebagai file .gif
-print("Sedang merajut frame menjadi animasi GIF... Mohon tunggu sebentar.")
-nama_output = 'simulasi_panas_TEG_dirichlet.gif'
-ani.save(nama_output, writer='pillow', fps=25)
-print(f"Selesai! File animasi tersimpan di: {os.path.abspath(nama_output)}")
+const dt = 0.0004;
+const t_total = 2.5;
 
-# Menampilkan jendela animasi interaktif di VS Code
-plt.show()
+const nt = Math.floor(t_total / dt);
+
+const cfl = alpha * dt / (dx * dx);
+
+if(cfl >= 0.5){
+    alert("Simulasi tidak stabil! CFL >= 0.5");
+}
+
+// Posisi vertikal
+let x = [];
+for(let i=0;i<nx;i++){
+    x.push(i * dx);
+}
+
+// ==========================================
+// 3. INISIALISASI SUHU
+// ==========================================
+let T = new Array(nx).fill(T_init);
+
+T[0] = T_hot;
+T[nx-1] = T_cold;
+
+// Menyimpan history animasi
+let history = [];
+let waktu = [];
+
+history.push([...T]);
+waktu.push(0);
+
+// ==========================================
+// 4. ITERASI NUMERIK
+// ==========================================
+for(let n=0; n<nt; n++){
+
+    let T_new = [...T];
+
+    for(let i=1; i<nx-1; i++){
+        T_new[i] =
+            T[i] +
+            cfl * (T[i+1] - 2*T[i] + T[i-1]);
+    }
+
+    // Dirichlet Boundary
+    T_new[0] = T_hot;
+    T_new[nx-1] = T_cold;
+
+    T = [...T_new];
+
+    if(n % 25 === 0){
+        history.push([...T]);
+        waktu.push(n * dt);
+    }
+}
+
+// ==========================================
+// 5. CANVAS SETUP
+// ==========================================
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const width = canvas.width;
+const height = canvas.height;
+
+// Margin grafik
+const margin = 70;
+
+// Konversi koordinat
+function mapX(temp){
+    return margin + (temp - 250) / (500 - 250) * (width - 2*margin);
+}
+
+function mapY(pos){
+    return height - margin - (pos / L) * (height - 2*margin);
+}
+
+// ==========================================
+// 6. GAMBAR AXIS
+// ==========================================
+function drawAxes(){
+
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 2;
+
+    // Sumbu X
+    ctx.beginPath();
+    ctx.moveTo(margin, height-margin);
+    ctx.lineTo(width-margin, height-margin);
+    ctx.stroke();
+
+    // Sumbu Y
+    ctx.beginPath();
+    ctx.moveTo(margin, height-margin);
+    ctx.lineTo(margin, margin);
+    ctx.stroke();
+
+    // Label
+    ctx.font = "16px Arial";
+    ctx.fillText("Suhu / Temperatur (Kelvin)", width/2 - 100, height - 20);
+
+    ctx.save();
+    ctx.translate(20, height/2 + 100);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText("Posisi Vertikal Pelat (meter)", 0, 0);
+    ctx.restore();
+}
+
+// ==========================================
+// 7. GAMBAR PROFIL SUHU
+// ==========================================
+function drawFrame(frameIndex){
+
+    ctx.clearRect(0,0,width,height);
+
+    drawAxes();
+
+    const data = history[frameIndex];
+
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 3;
+
+    ctx.beginPath();
+
+    for(let i=0; i<nx; i++){
+
+        let px = mapX(data[i]);
+        let py = mapY(x[i]);
+
+        if(i === 0){
+            ctx.moveTo(px, py);
+        }else{
+            ctx.lineTo(px, py);
+        }
+    }
+
+    ctx.stroke();
+
+    // Update waktu
+    document.getElementById("timeText").innerHTML =
+        "Waktu: " + waktu[frameIndex].toFixed(3) + " detik";
+}
+
+// ==========================================
+// 8. ANIMASI
+// ==========================================
+let frame = 0;
+
+function animate(){
+
+    drawFrame(frame);
+
+    frame++;
+
+    if(frame >= history.length){
+        frame = 0;
+    }
+
+    requestAnimationFrame(animate);
+}
+
+animate();
+
+</script>
+
+</body>
+</html>
