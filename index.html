@@ -1,0 +1,100 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+import os
+
+# ==========================================
+# 1. PARAMETER FISIK (ALUMINIUM - JURNAL DEFRIANTO)
+# ==========================================
+L = 0.02              # Tebal/Tinggi pelat adaptor (2 cm = 0.02 m)
+alpha = 9.7e-5        # Difusivitas termal Aluminium (m^2/s)
+T_hot = 463.0         # Kondisi Batas Dirichlet Bawah (x=0) -> Sumber Panas
+T_cold = 373.0        # Kondisi Batas Dirichlet Atas (x=L) -> Sisi Elemen TEG
+T_init = 298.0        # Kondisi Awal (t=0) -> Suhu Ruang 
+
+# ==========================================
+# 2. PARAMETER GRID DISKRIT & WAKTU
+# ==========================================
+nx = 60               # Jumlah titik pias sepanjang sumbu vertikal
+dx = L / (nx - 1)     # Jarak antar titik grid
+dt = 0.0004           # Langkah waktu (detik) - dibuat kecil agar stabil
+t_total = 2.5         # Total waktu simulasi sampai kondisi tunak (steady)
+nt = int(t_total / dt)
+
+# Cek Syarat Kestabilan Courant (CFL harus < 0.5)
+cfl = alpha * dt / (dx**2)
+print(f"Nilai parameter kestabilan CFL: {cfl:.4f}")
+if cfl >= 0.5:
+    raise ValueError("Simulasi tidak stabil! Perkecil nilai dt.")
+
+# Inisialisasi Posisi Vertikal (Sumbu Y pada Grafik)
+x = np.linspace(0, L, nx)
+
+# Inisialisasi array Suhu T
+T = np.ones(nx) * T_init
+
+# Terapkan Syarat Batas Dirichlet di Awal
+T[0] = T_hot
+T[-1] = T_cold
+
+# Array penampung frame untuk kebutuhan animasi bergerak
+history_T = [T.copy()]
+waktu_simulasi = [0.0]
+
+# ==========================================
+# 3. PROSES ITERASI NUMERIK (PERSAMAAN DIFUSI PANAS)
+# ==========================================
+for n in range(nt):
+    T_new = T.copy()
+    
+    # Hitung nilai suhu di titik bagian dalam pelat (Internal Nodes)
+    for i in range(1, nx - 1):
+        T_new[i] = T[i] + cfl * (T[i+1] - 2*T[i] + T[i-1])
+        
+    # Jaga Kondisi Batas Dirichlet agar TETAP KONSTAN di Ujung-Ujungnya
+    T_new[0] = T_hot
+    T_new[-1] = T_cold
+    
+    T = T_new.copy()
+    
+    # Simpan frame setiap 25 iterasi agar jalannya animasi halus
+    if n % 25 == 0:
+        history_T.append(T.copy())
+        waktu_simulasi.append(n * dt)
+
+# ==========================================
+# 4. RENDERING GRAFIK BERGERAK VERTIKAL (VS CODE)
+# ==========================================
+# Membuat plot vertikal: Sumbu X = Suhu (K), Sumbu Y = Posisi Vertikal Pelat (m)
+fig, ax = plt.subplots(figsize=(6, 8))
+line, = ax.plot(history_T[0], x, color='red', lw=3, label='Profil Suhu $T(x,t)$')
+
+# Batas tampilan grafik luar
+ax.set_xlim(250, 500)
+ax.set_ylim(0, L)
+ax.set_xlabel('Suhu / Temperatur (Kelvin)', fontsize=12)
+ax.set_ylabel('Posisi Vertikal Pelat Adaptor, $x$ (meter)', fontsize=12)
+ax.set_title('Simulasi Transien Perambatan Panas Vertikal 1D\n(Kondisi Batas Dirichlet - Kasus TEG)', fontsize=12, pad=15)
+ax.grid(True, linestyle='--', alpha=0.6)
+
+# Teks keterangan waktu transien
+time_text = ax.text(260, L * 0.9, '', fontsize=12, bbox=dict(facecolor='white', alpha=0.8))
+ax.legend(loc='lower left')
+
+# Fungsi pengupdate tiap frame gambar bergerak
+def update(i):
+    line.set_xdata(history_T[i])
+    time_text.set_text(f'Waktu: {waktu_simulasi[i]:.3f} detik')
+    return line, time_text
+
+# Menjalankan objek animasi
+ani = FuncAnimation(fig, update, frames=len(history_T), interval=40, blit=True)
+
+# Menyimpan ke direktori lokal laptop sebagai file .gif
+print("Sedang merajut frame menjadi animasi GIF... Mohon tunggu sebentar.")
+nama_output = 'simulasi_panas_TEG_dirichlet.gif'
+ani.save(nama_output, writer='pillow', fps=25)
+print(f"Selesai! File animasi tersimpan di: {os.path.abspath(nama_output)}")
+
+# Menampilkan jendela animasi interaktif di VS Code
+plt.show()
