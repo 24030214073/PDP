@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulasi Panas TEG Dirichlet</title>
+<style>
+body{
+    font-family:Arial, sans-serif;
+    background:#f2f2f2;
+    text-align:center;
+    margin:0;
+    padding:20px;
+}
+h1{ margin-bottom:5px; }
+canvas{
+    background:white;
+    border:1px solid #bbb;
+    margin-top:20px;
+}
+.controls{ margin-top:20px; }
+button{
+    padding:10px 20px;
+    font-size:16px;
+    margin:5px;
+    cursor:pointer;
+}
+.info{
+    margin-top:15px;
+    font-size:18px;
+}
+table{
+    margin:25px auto;
+    border-collapse:collapse;
+    background:white;
+    width:900px;
+}
+th, td{
+    border:1px solid #444;
+    padding:10px;
+    text-align:center;
+}
+th{ background:#ddd; }
+
+/* Legend */
+.legend{
+    display:inline-flex;
+    align-items:center;
+    gap:30px;
+    margin-top:10px;
+    font-size:15px;
+    background:white;
+    border:1px solid #bbb;
+    padding:8px 20px;
+    border-radius:6px;
+}
+.legend-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+}
+.legend-line{
+    width:36px;
+    height:4px;
+    border-radius:2px;
+}
+.legend-dashed{
+    width:36px;
+    height:0;
+    border-top:3px dashed blue;
+}
+</style>
+</head>
+<body>
+
+<h1>Simulasi Transien Perambatan Panas 1D</h1>
+<p>Kondisi Batas Dirichlet &mdash; Kasus TEG</p>
+
+<div class="controls">
+    <button onclick="togglePause()" id="pauseBtn">Pause</button>
+    <button onclick="resetAnimasi()">Reset</button>
+</div>
+
+<canvas id="canvas" width="700" height="700"></canvas>
+
+<!-- Legenda di bawah canvas -->
+<div>
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-line" style="background:red;"></div>
+            <span>Suhu Numerik (transien)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-dashed"></div>
+            <span>Suhu Steady-State (analitik)</span>
+        </div>
+    </div>
+</div>
+
+<div class="info" id="timeText">Waktu: 0.000 detik</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Posisi</th>
+            <th>Suhu Numerik</th>
+            <th>Suhu Steady-State</th>
+        </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+</table>
+
+<script>
+// ==========================================
+// PARAMETER FISIK
+// ==========================================
+const L     = 0.02;
+const alpha = 9.7e-5;
+
+const T_hot  = 463;
+const T_cold = 373;
+const T_init = 302.15;
+
+// ==========================================
+// GRID
+// ==========================================
+const nx  = 60;
+const dx  = L / (nx - 1);
+const dt  = 0.0004;
+const t_total = 2.5;
+const nt  = Math.floor(t_total / dt);
+const cfl = alpha * dt / (dx * dx);
+
+if (cfl >= 0.5) alert("Simulasi tidak stabil!");
+
+// ==========================================
+// POSISI
+// ==========================================
+let x = [];
+for (let i = 0; i < nx; i++) x.push(i * dx);
+
+// ==========================================
+// INISIALISASI SUHU
+// ==========================================
+let T = new Array(nx).fill(T_init);
+T[0]      = T_hot;
+T[nx - 1] = T_cold;
+
+// ==========================================
+// HISTORY
+// ==========================================
+let history = [];
+let waktu   = [];
+history.push([...T]);
+waktu.push(0);
+
+// ==========================================
+// ITERASI NUMERIK
+// ==========================================
+for (let n = 0; n < nt; n++) {
+    let T_new = [...T];
+    for (let i = 1; i < nx - 1; i++) {
+        T_new[i] = T[i] + cfl * (T[i + 1] - 2 * T[i] + T[i - 1]);
+    }
+    T_new[0]      = T_hot;
+    T_new[nx - 1] = T_cold;
+    T = [...T_new];
+    if (n % 25 === 0) {
+        history.push([...T]);
+        waktu.push(n * dt);
+    }
+}
+
+// ==========================================
+// CANVAS
+// ==========================================
+const canvas = document.getElementById("canvas");
+const ctx    = canvas.getContext("2d");
+const width  = canvas.width;
+const height = canvas.height;
+
+// Margin lebih besar untuk menampung label
+const marginLeft   = 80;
+const marginRight  = 30;
+const marginTop    = 40;
+const marginBottom = 70;
+
+// Rentang sumbu
+const T_min = 290;
+const T_max = 475;
+
+// ==========================================
+// MAPPING
+// ==========================================
+function mapX(temp) {
+    return marginLeft + (temp - T_min) / (T_max - T_min) * (width - marginLeft - marginRight);
+}
+function mapY(pos) {
+    return height - marginBottom - (pos / L) * (height - marginTop - marginBottom);
+}
+
+// ==========================================
+// AXES + KETERANGAN
+// ==========================================
+function drawAxes() {
+    ctx.strokeStyle = "black";
+    ctx.lineWidth   = 2;
+    ctx.fillStyle   = "black";
+
+    // Sumbu X (bawah)
+    ctx.beginPath();
+    ctx.moveTo(marginLeft, height - marginBottom);
+    ctx.lineTo(width - marginRight, height - marginBottom);
+    ctx.stroke();
+
+    // Sumbu Y (kiri)
+    ctx.beginPath();
+    ctx.moveTo(marginLeft, marginTop);
+    ctx.lineTo(marginLeft, height - marginBottom);
+    ctx.stroke();
+
+    // ------------------------------------------
+    // Tick & Label Sumbu X: Temperatur (K)
+    // ------------------------------------------
+    ctx.font      = "13px Arial";
+    ctx.textAlign = "center";
+
+    const tempTicks = [300, 320, 340, 360, 380, 400, 420, 440, 460];
+
+    for (let tk of tempTicks) {
+        if (tk < T_min || tk > T_max) continue;
+        let px = mapX(tk);
+
+        // Garis tick
+        ctx.beginPath();
+        ctx.strokeStyle = "black";
+        ctx.lineWidth   = 1.5;
+        ctx.moveTo(px, height - marginBottom);
+        ctx.lineTo(px, height - marginBottom + 7);
+        ctx.stroke();
+
+        // Grid halus
+        ctx.beginPath();
+        ctx.strokeStyle = "#ddd";
+        ctx.lineWidth   = 0.8;
+        ctx.setLineDash([4, 4]);
+        ctx.moveTo(px, marginTop);
+        ctx.lineTo(px, height - marginBottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Angka
+        ctx.fillStyle = "black";
+        ctx.fillText(tk + " K", px, height - marginBottom + 22);
+    }
+
+    // Label judul sumbu X
+    ctx.font      = "15px Arial";
+    ctx.fillStyle = "#222";
+    ctx.textAlign = "center";
+    ctx.fillText("Temperatur (K)", width / 2 + (marginLeft - marginRight) / 2, height - 10);
+
+    // ------------------------------------------
+    // Tick & Label Sumbu Y: Posisi Pelat (m)
+    // ------------------------------------------
+    const posTicks = [0, 0.004, 0.008, 0.012, 0.016, 0.020]; // meter
+
+    ctx.font      = "12px Arial";
+    ctx.textAlign = "right";
+
+    for (let p of posTicks) {
+        let py = mapY(p);
+
+        // Tick
+        ctx.beginPath();
+        ctx.strokeStyle = "black";
+        ctx.lineWidth   = 1.5;
+        ctx.moveTo(marginLeft, py);
+        ctx.lineTo(marginLeft - 7, py);
+        ctx.stroke();
+
+        // Grid halus
+        ctx.beginPath();
+        ctx.strokeStyle = "#ddd";
+        ctx.lineWidth   = 0.8;
+        ctx.setLineDash([4, 4]);
+        ctx.moveTo(marginLeft, py);
+        ctx.lineTo(width - marginRight, py);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Angka
+        ctx.fillStyle = "black";
+        ctx.fillText(p.toFixed(3) + " m", marginLeft - 10, py + 4);
+    }
+
+    // Label judul sumbu Y (vertikal)
+    ctx.save();
+    ctx.translate(18, (height - marginTop - marginBottom) / 2 + marginTop);
+    ctx.rotate(-Math.PI / 2);
+    ctx.font      = "15px Arial";
+    ctx.fillStyle = "#222";
+    ctx.textAlign = "center";
+    ctx.fillText("Posisi Pelat (m)", 0, 0);
+    ctx.restore();
+
+    // ------------------------------------------
+    // Label batas Dirichlet di tepi kiri canvas
+    // ------------------------------------------
+    ctx.font      = "12px Arial";
+    ctx.fillStyle = "#cc0000";
+    ctx.textAlign = "left";
+    ctx.fillText("T_hot = " + T_hot + " K", marginLeft + 5, mapY(0) - 10);
+
+    ctx.fillStyle = "#0044cc";
+    ctx.fillText("T_cold = " + T_cold + " K", marginLeft + 5, mapY(L) + 18);
+}
+
+// ==========================================
+// STEADY STATE ANALITIK
+// ==========================================
+function steadyState(z) {
+    return T_hot - ((T_hot - T_cold) / L) * z;
+}
+
+// ==========================================
+// UPDATE TABEL
+// ==========================================
+function updateTable(data) {
+    const tbody    = document.getElementById("tableBody");
+    tbody.innerHTML = "";
+    const positions = [0, L/4, L/2, 3*L/4, L];
+    const labels    = ["z = 0", "z = L/4", "z = L/2", "z = 3L/4", "z = L"];
+    for (let i = 0; i < positions.length; i++) {
+        let z        = positions[i];
+        let index    = Math.round(z / dx);
+        let numerical = data[index].toFixed(2);
+        let analytic  = steadyState(z).toFixed(2);
+        tbody.innerHTML += `
+        <tr>
+            <td>${labels[i]}</td>
+            <td>${numerical} K</td>
+            <td>${analytic} K</td>
+        </tr>`;
+    }
+}
+
+// ==========================================
+// FRAME
+// ==========================================
+function drawFrame(frameIndex) {
+    ctx.clearRect(0, 0, width, height);
+
+    drawAxes();
+
+    const data = history[frameIndex];
+
+    // --- Kurva numerik (merah) ---
+    ctx.strokeStyle = "red";
+    ctx.lineWidth   = 3;
+    ctx.beginPath();
+    for (let i = 0; i < nx; i++) {
+        let px = mapX(data[i]);
+        let py = mapY(x[i]);
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // --- Kurva steady-state (biru putus-putus) ---
+    ctx.strokeStyle = "blue";
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    for (let i = 0; i < nx; i++) {
+        let Tss = steadyState(x[i]);
+        let px  = mapX(Tss);
+        let py  = mapY(x[i]);
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // --- Waktu ---
+    document.getElementById("timeText").innerHTML =
+        "Waktu: " + waktu[frameIndex].toFixed(3) + " detik";
+
+    updateTable(data);
+}
+
+// ==========================================
+// ANIMASI
+// ==========================================
+let frame  = 0;
+let paused = false;
+
+function animate() {
+    if (!paused) {
+        drawFrame(frame);
+        frame++;
+        if (frame >= history.length) frame = history.length - 1;
+    }
+    requestAnimationFrame(animate);
+}
+animate();
+
+// ==========================================
+// TOMBOL
+// ==========================================
+function togglePause() {
+    paused = !paused;
+    document.getElementById("pauseBtn").innerHTML = paused ? "Resume" : "Pause";
+}
+function resetAnimasi() {
+    frame = 0;
+}
+</script>
+
+</body>
+</html>
